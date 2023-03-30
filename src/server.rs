@@ -1,6 +1,6 @@
-use std::{net::SocketAddr, sync::Arc};
+use std::{net::SocketAddr, path::Path, sync::Arc};
 
-use color_eyre::{eyre::eyre, owo_colors::OwoColorize, Report};
+use color_eyre::{owo_colors::OwoColorize, Report};
 use deku::{DekuContainerRead, DekuContainerWrite};
 use tokio::net::UdpSocket;
 use tracing::{debug, error, info, trace};
@@ -12,7 +12,9 @@ use crate::{
     db::{Db, Record},
 };
 
-pub async fn run(listen_addr: (&str, u16)) -> Result<(), Report> {
+pub async fn run(db: &Path, listen_addr: (&str, u16)) -> Result<(), Report> {
+    let db = Arc::new(crate::db::load(db)?);
+
     let socket = Arc::new(UdpSocket::bind(listen_addr).await?);
 
     info!(
@@ -28,11 +30,16 @@ pub async fn run(listen_addr: (&str, u16)) -> Result<(), Report> {
         debug!("Received {count} bytes from {addr}");
         trace!("Data: {data:?}");
 
-        tokio::spawn(handle_request(socket.clone(), data.to_vec(), addr));
+        tokio::spawn(handle_request(
+            db.clone(),
+            socket.clone(),
+            data.to_vec(),
+            addr,
+        ));
     }
 }
 
-async fn handle_request(socket: Arc<UdpSocket>, data: Vec<u8>, addr: SocketAddr) {
+async fn handle_request(db: Arc<Db>, socket: Arc<UdpSocket>, data: Vec<u8>, addr: SocketAddr) {
     let message = match Message::from_bytes((&data, 0)) {
         Ok((_, message)) => message,
         Err(err) => {
@@ -43,7 +50,7 @@ async fn handle_request(socket: Arc<UdpSocket>, data: Vec<u8>, addr: SocketAddr)
 
     debug!("Handling message: {message:#?}");
 
-    let response = match handle_message(message).await {
+    let response = match handle_message(&db, message).await {
         Ok(response) => response,
         Err(err) => {
             error!("Failed to handle message: {err}");
@@ -68,11 +75,11 @@ async fn handle_request(socket: Arc<UdpSocket>, data: Vec<u8>, addr: SocketAddr)
     }
 }
 
-async fn handle_message(message: Message) -> Result<Message, Report> {
+async fn handle_message(db: &Db, message: Message) -> Result<Message, Report> {
     let answers = message
         .questions
         .iter()
-        .map(answer_question)
+        .map(|q| answer_question(db, q))
         .collect::<Result<Vec<_>, _>>()?;
 
     let header = Header {
@@ -95,22 +102,10 @@ async fn handle_message(message: Message) -> Result<Message, Report> {
     Ok(response)
 }
 
-fn answer_question(question: &Question) -> Result<ResourceRecord, Report> {
-    let mut db = Db::new();
-
-    db.insert(
-        &"example.com".parse().unwrap(),
-        Record::A {
-            address: [1, 1, 1, 1],
-        },
-    );
-
-    db.insert(
-        &"*.local.dev".parse().unwrap(),
-        Record::A {
-            address: [127, 0, 0, 1],
-        },
-    );
+fn answer_question(db: &Db, question: &Question) -> Result<ResourceRecord, Report> {
+    let no_such_domain = Record::TXT {
+        text: "No such domain".to_string(),
+    };
 
     info!(
         "<== {:<40}    {:?}",
@@ -118,10 +113,9 @@ fn answer_question(question: &Question) -> Result<ResourceRecord, Report> {
         question.qtype.green().bold(),
     );
 
-    let Some(record) = db.lookup(&question.qname, question.qtype) else {
-        // TODO: Return a resource record
-        return Err(eyre!("No record found"));
-    };
+    let record = db
+        .lookup(&question.qname, question.qtype)
+        .unwrap_or(&no_such_domain);
 
     info!(
         "==> {:<40}    {}",

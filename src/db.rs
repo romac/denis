@@ -12,6 +12,7 @@ use crate::{
 pub enum Record {
     A { address: [u8; 4] },
     CNAME { name: Name },
+    TXT { text: String },
 }
 
 impl Record {
@@ -19,6 +20,7 @@ impl Record {
         match self {
             Record::A { .. } => QType::A,
             Record::CNAME { .. } => QType::CNAME,
+            Record::TXT { .. } => QType::TXT,
         }
     }
 
@@ -30,6 +32,11 @@ impl Record {
         match self {
             Record::A { address } => address.to_vec(),
             Record::CNAME { name } => name.to_string().into_bytes(),
+            Record::TXT { text } => {
+                let mut bytes = vec![text.len() as u8];
+                bytes.extend(text.as_bytes());
+                bytes
+            }
         }
     }
 }
@@ -39,7 +46,7 @@ impl fmt::Display for Record {
         match self {
             Record::A { address } => write!(
                 f,
-                "{}    {}",
+                "{:<8} {}",
                 "A".green().bold(),
                 format!(
                     "{}.{}.{}.{}",
@@ -47,7 +54,8 @@ impl fmt::Display for Record {
                 )
                 .yellow()
             ),
-            Record::CNAME { name } => write!(f, "{}    {}", "CNAME".green().bold(), name),
+            Record::CNAME { name } => write!(f, "{:<8} {}", "CNAME".green().bold(), name),
+            Record::TXT { text } => write!(f, "{:<8} {}", "TXT".green().bold(), text.italic()),
         }
     }
 }

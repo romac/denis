@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use clap::Parser;
 use color_eyre::Report;
 
@@ -8,6 +10,9 @@ pub mod trie;
 
 #[derive(Debug, Parser)]
 struct Args {
+    #[clap(short, long)]
+    db: PathBuf,
+
     #[clap(short, long, default_value = "7777")]
     port: u16,
 }
@@ -23,7 +28,7 @@ async fn main() -> Result<(), Report> {
     setup()?;
 
     let args = Args::parse();
-    server::run(args.listen_addr()).await?;
+    server::run(&args.db, args.listen_addr()).await?;
 
     Ok(())
 }
