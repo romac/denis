@@ -5,6 +5,7 @@ use color_eyre::Report;
 
 pub mod data;
 pub mod db;
+pub mod record;
 pub mod server;
 pub mod trie;
 
@@ -48,6 +49,7 @@ fn setup() -> Result<(), Report> {
 
     tracing_subscriber::fmt::fmt()
         .with_env_filter(EnvFilter::from_default_env())
+        .with_target(false)
         .init();
 
     Ok(())

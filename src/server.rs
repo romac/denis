@@ -9,7 +9,8 @@ const MAX_MESSAGE_SIZE: usize = 512;
 
 use crate::{
     data::{Flags, Header, Message, Question, ResourceRecord},
-    db::{Db, Record},
+    db::Db,
+    record::Record,
 };
 
 pub async fn run(db: &Path, listen_addr: (&str, u16)) -> Result<(), Report> {
@@ -108,7 +109,7 @@ fn answer_question(db: &Db, question: &Question) -> Result<ResourceRecord, Repor
     };
 
     info!(
-        "<== {:<40}    {:?}",
+        "<== {:<60}    {:?}",
         question.qname.blue().bold().to_string(),
         question.qtype.green().bold(),
     );
@@ -118,7 +119,7 @@ fn answer_question(db: &Db, question: &Question) -> Result<ResourceRecord, Repor
         .unwrap_or(&no_such_domain);
 
     info!(
-        "==> {:<40}    {}",
+        "==> {:<60}    {}",
         question.qname.blue().bold().to_string(),
         record
     );

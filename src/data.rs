@@ -150,6 +150,12 @@ impl Name {
             .filter(|label| label.len != 0)
             .map(|label| label.as_str())
     }
+
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut output = deku::bitvec::BitVec::new();
+        deku::DekuWrite::write(self, &mut output, deku::ctx::Endian::Big).unwrap();
+        output.into_vec()
+    }
 }
 
 impl fmt::Debug for Name {
@@ -220,7 +226,10 @@ pub enum QType {
     MINFO = 14,
     MX = 15,
     TXT = 16,
+    AAAA = 28,
     OPT = 41,
+    SVCB = 64,
+    HTTPS = 65,
 
     AXFR = 252,
     MAILB = 253,
@@ -255,7 +264,10 @@ impl FromStr for QType {
             "MINFO" => Ok(QType::MINFO),
             "MX" => Ok(QType::MX),
             "TXT" => Ok(QType::TXT),
+            "AAAA" => Ok(QType::AAAA),
             "OPT" => Ok(QType::OPT),
+            "SVCB" => Ok(QType::SVCB),
+            "HTTPS" => Ok(QType::HTTPS),
             "AXFR" => Ok(QType::AXFR),
             "MAILB" => Ok(QType::MAILB),
             "MAILA" => Ok(QType::MAILA),
