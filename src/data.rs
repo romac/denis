@@ -7,7 +7,6 @@ use color_eyre::{eyre::eyre, Report};
 use deku::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, Eq, DekuRead, DekuWrite)]
-#[deku(endian = "big")]
 pub struct Message {
     pub header: Header,
     #[deku(count = "header.qdcount")]
@@ -21,18 +20,21 @@ pub struct Message {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, DekuRead, DekuWrite)]
-#[deku(endian = "endian", ctx = "endian: deku::ctx::Endian")]
 pub struct Header {
+    #[deku(endian = "big")]
     pub id: u16,
     pub flags: Flags,
+    #[deku(endian = "big")]
     pub qdcount: u16,
+    #[deku(endian = "big")]
     pub ancount: u16,
+    #[deku(endian = "big")]
     pub nscount: u16,
+    #[deku(endian = "big")]
     pub arcount: u16,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, DekuRead, DekuWrite)]
-#[deku(endian = "endian", ctx = "endian: deku::ctx::Endian")]
 pub struct Flags {
     #[deku(bits = "1")]
     pub qr: bool,
@@ -45,7 +47,7 @@ pub struct Flags {
     pub rd: bool,
     #[deku(bits = "1")]
     pub ra: bool,
-    #[deku(bits = "3")]
+    #[deku(bits = "3", endian = "big")]
     pub z: u8,
     pub rcode: RCode,
 }
@@ -68,7 +70,6 @@ impl Flags {
 #[repr(u8)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, DekuRead, DekuWrite)]
 #[deku(type = "u8", bits = "4")]
-#[deku(endian = "endian", ctx = "endian: deku::ctx::Endian")]
 pub enum Opcode {
     Query = 0,
     IQuery = 1,
@@ -78,7 +79,6 @@ pub enum Opcode {
 #[repr(u8)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, DekuRead, DekuWrite)]
 #[deku(type = "u8", bits = "4")]
-#[deku(endian = "endian", ctx = "endian: deku::ctx::Endian")]
 pub enum RCode {
     NoError = 0,
     FormatError = 1,
@@ -89,7 +89,6 @@ pub enum RCode {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, DekuRead, DekuWrite)]
-#[deku(endian = "endian", ctx = "endian: deku::ctx::Endian")]
 pub struct Question {
     pub qname: Name,
     pub qtype: QType,
@@ -97,15 +96,17 @@ pub struct Question {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, DekuRead, DekuWrite)]
-#[deku(endian = "endian", ctx = "endian: deku::ctx::Endian")]
 pub struct ResourceRecord {
     pub name: Name,
     pub qtype: QType,
+
     #[deku(cond = "*qtype != QType::OPT", default = "QClass::NONE")]
     pub qclass: QClass,
+
+    #[deku(endian = "big")]
     pub ttl: i32,
 
-    #[deku(update = "self.data.len()")]
+    #[deku(update = "self.data.len()", endian = "big")]
     pub rdlength: u16,
     #[deku(count = "rdlength")]
     pub data: Vec<u8>,
@@ -117,7 +118,6 @@ pub struct ResourceRecord {
 }
 
 #[derive(Clone, PartialEq, Eq, DekuRead, DekuWrite)]
-#[deku(endian = "endian", ctx = "endian: deku::ctx::Endian")]
 pub struct Name {
     #[deku(until = "|label: &Label| label.len == 0")]
     labels: Vec<Label>,
@@ -153,7 +153,7 @@ impl Name {
 
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut output = deku::bitvec::BitVec::new();
-        deku::DekuWrite::write(self, &mut output, deku::ctx::Endian::Big).unwrap();
+        deku::DekuWrite::write(self, &mut output, ()).unwrap();
         output.into_vec()
     }
 }
@@ -178,8 +178,29 @@ impl fmt::Display for Name {
     }
 }
 
+// #[derive(Clone, Hash, PartialEq, Eq, DekuWrite)]
+// #[deku(endian = "endian", ctx = "endian: deku::ctx::Endian")]
+// pub struct Label(String);
+
+// impl Label {
+//     pub fn as_str(&self) -> &str {
+//         self.0.as_str()
+//     }
+// }
+
+// impl<'a> DekuRead<'a> for Label {
+//     fn read(
+//         input: &'a deku::bitvec::BitSlice<u8, deku::bitvec::Msb0>,
+//         ctx: (),
+//     ) -> Result<(&'a deku::bitvec::BitSlice<u8, deku::bitvec::Msb0>, Self), DekuError>
+//     where
+//         Self: Sized,
+//     {
+//         todo!()
+//     }
+// }
+
 #[derive(Clone, Hash, PartialEq, Eq, DekuRead, DekuWrite)]
-#[deku(endian = "endian", ctx = "endian: deku::ctx::Endian")]
 pub struct Label {
     #[deku(update = "self.data.len()")]
     pub len: u8,
@@ -207,8 +228,7 @@ impl fmt::Debug for Label {
 
 #[repr(u16)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, DekuRead, DekuWrite)]
-#[deku(type = "u16")]
-#[deku(endian = "_endian", ctx = "_endian: deku::ctx::Endian")]
+#[deku(type = "u16", endian = "big")]
 pub enum QType {
     A = 1,
     NS = 2,
@@ -279,8 +299,7 @@ impl FromStr for QType {
 
 #[repr(u16)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, DekuRead, DekuWrite)]
-#[deku(type = "u16")]
-#[deku(endian = "_endian", ctx = "_endian: deku::ctx::Endian")]
+#[deku(type = "u16", endian = "big")]
 pub enum QClass {
     NONE = 0,
     IN = 1,
@@ -291,14 +310,40 @@ pub enum QClass {
     ANY = 255,
 }
 
-#[test]
-fn decode_query() {
-    let data: &[u8] = &[
-        100, 68, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 3, 102, 111, 111, 5, 108, 111, 99, 97, 108, 3, 100,
-        101, 118, 0, 0, 255, 0, 1, 0, 0, 41, 2, 0, 0, 0, 0, 0, 0, 0,
-    ];
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    let ((rest, _count), message) = Message::from_bytes((data, 0)).unwrap();
-    println!("Message: {message:#?}");
-    println!("Rest: {rest:?}");
+    #[test]
+    fn decode_query() {
+        let data: &[u8] = &[
+            100, 68, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 3, 102, 111, 111, 5, 108, 111, 99, 97, 108, 3,
+            100, 101, 118, 0, 0, 255, 0, 1, 0, 0, 41, 2, 0, 0, 0, 0, 0, 0, 0,
+        ];
+
+        let ((rest, _count), message) = Message::from_bytes((data, 0)).unwrap();
+        println!("Message: {message:#?}");
+        println!("Rest: {rest:?}");
+    }
+
+    #[test]
+    fn decode_google() {
+        let data: &[u8] = &[
+            13, 208, 129, 128, 0, 1, 0, 1, 0, 0, 0, 0, 4, 110, 101, 119, 115, 11, 121, 99, 111,
+            109, 98, 105, 110, 97, 116, 111, 114, 3, 99, 111, 109, 0, 0, 1, 0, 1, 192, 12, 0, 1, 0,
+            1, 0, 0, 0, 1, 0, 4, 209, 216, 230, 240,
+        ];
+
+        let (rest, header) = Header::from_bytes((data, 0)).unwrap();
+        println!("Header: {header:#?}");
+
+        let (rest, question) = Question::from_bytes(rest).unwrap();
+        println!("Question: {question:#?}");
+
+        let (_, name) = Name::from_bytes(rest).unwrap();
+        println!("Name: {name:#?}");
+
+        let (rest, answer) = ResourceRecord::from_bytes(rest).unwrap();
+        println!("Answer: {answer:#?}");
+    }
 }
