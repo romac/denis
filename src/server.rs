@@ -113,9 +113,9 @@ fn answer_question(question: &Question) -> Result<ResourceRecord, Report> {
     );
 
     info!(
-        "<== {}    {:?}",
-        question.qname.blue().bold(),
-        question.qtype.yellow().bold(),
+        "<== {:<40}    {:?}",
+        question.qname.blue().bold().to_string(),
+        question.qtype.green().bold(),
     );
 
     let Some(record) = db.lookup(&question.qname, question.qtype) else {
@@ -123,7 +123,11 @@ fn answer_question(question: &Question) -> Result<ResourceRecord, Report> {
         return Err(eyre!("No record found"));
     };
 
-    info!("==> {}    {}", question.qname.blue().bold(), record);
+    info!(
+        "==> {:<40}    {}",
+        question.qname.blue().bold().to_string(),
+        record
+    );
 
     let data = record.to_bytes();
 
