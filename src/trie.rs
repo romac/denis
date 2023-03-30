@@ -10,12 +10,9 @@ pub struct DnsTrie<Value> {
     root: Node<Value>,
 }
 
-pub enum Node<Value> {
-    Leaf(Value),
-    Branch {
-        children: HashMap<Key, Node<Value>>,
-        value: Option<Value>,
-    },
+pub struct Node<Value> {
+    children: HashMap<Key, Node<Value>>,
+    value: Option<Value>,
 }
 
 impl<Value> Default for DnsTrie<Value> {
@@ -27,7 +24,7 @@ impl<Value> Default for DnsTrie<Value> {
 impl<Value> DnsTrie<Value> {
     pub fn new() -> Self {
         Self {
-            root: Node::Branch {
+            root: Node {
                 children: HashMap::new(),
                 value: None,
             },
@@ -38,47 +35,29 @@ impl<Value> DnsTrie<Value> {
         let mut node = &mut self.root;
 
         for key in keys {
-            match node {
-                Node::Leaf(_) => panic!("Tried to insert into a leaf node"),
-                Node::Branch { children, value: _ } => {
-                    node = children.entry(key.clone()).or_insert_with(|| Node::Branch {
-                        children: HashMap::new(),
-                        value: None,
-                    });
-                }
-            }
+            node = node.children.entry(key.clone()).or_insert_with(|| Node {
+                children: HashMap::new(),
+                value: None,
+            });
         }
 
-        match node {
-            Node::Leaf(_) => panic!("Tried to insert into a leaf node"),
-            Node::Branch { children: _, value } => {
-                *value = Some(val);
-            }
-        }
+        node.value = Some(val);
     }
 
     pub fn lookup(&self, keys: &[Key]) -> Option<&Value> {
         let mut node = &self.root;
 
         for key in keys {
-            match node {
-                Node::Leaf(value) => return Some(value),
-                Node::Branch { children, value } => {
-                    if let Some(child) = children.get(key) {
-                        node = child;
-                    } else if let Some(child) = children.get(&Key::Wildcard) {
-                        node = child;
-                    } else {
-                        return value.as_ref();
-                    }
-                }
+            if let Some(child) = node.children.get(key) {
+                node = child;
+            } else if let Some(child) = node.children.get(&Key::Wildcard) {
+                node = child;
+            } else {
+                return node.value.as_ref();
             }
         }
 
-        match node {
-            Node::Leaf(value) => Some(value),
-            Node::Branch { children: _, value } => value.as_ref(),
-        }
+        node.value.as_ref()
     }
 }
 
