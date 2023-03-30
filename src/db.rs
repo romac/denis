@@ -82,7 +82,7 @@ impl Db {
 
         self.trie
             .lookup(key)
-            .filter(|record| record.qtype() == qtype)
+            .filter(|record| qtype == QType::ANY || record.qtype() == qtype)
     }
 }
 
