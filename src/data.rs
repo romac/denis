@@ -1,6 +1,7 @@
 #![allow(clippy::upper_case_acronyms)]
 
 use core::fmt;
+use std::str::FromStr;
 
 use deku::prelude::*;
 
@@ -48,6 +49,21 @@ pub struct Flags {
     pub rcode: RCode,
 }
 
+impl Flags {
+    pub fn answer(opcode: Opcode) -> Self {
+        Self {
+            qr: true,
+            opcode,
+            aa: true,
+            tc: false,
+            rd: false,
+            ra: false,
+            z: 0,
+            rcode: RCode::NoError,
+        }
+    }
+}
+
 #[repr(u8)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, DekuRead, DekuWrite)]
 #[deku(type = "u8", bits = "4")]
@@ -83,8 +99,8 @@ pub struct Question {
 #[deku(endian = "endian", ctx = "endian: deku::ctx::Endian")]
 pub struct ResourceRecord {
     pub name: Name,
-    pub r#type: QType,
-    #[deku(cond = "*r#type != QType::OPT", default = "QClass::NONE")]
+    pub qtype: QType,
+    #[deku(cond = "*qtype != QType::OPT", default = "QClass::NONE")]
     pub qclass: QClass,
     pub ttl: i32,
 
@@ -93,21 +109,41 @@ pub struct ResourceRecord {
     #[deku(count = "rdlength")]
     pub data: Vec<u8>,
 
-    #[deku(cond = "*r#type == QType::OPT")]
+    #[deku(cond = "*qtype == QType::OPT")]
     pub options_code: Option<u8>,
-    #[deku(cond = "*r#type == QType::OPT")]
+    #[deku(cond = "*qtype == QType::OPT")]
     pub options_length: Option<u8>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, DekuRead, DekuWrite)]
+#[derive(Clone, PartialEq, Eq, DekuRead, DekuWrite)]
 #[deku(endian = "endian", ctx = "endian: deku::ctx::Endian")]
 pub struct Name {
     #[deku(until = "|label: &Label| label.len == 0")]
     labels: Vec<Label>,
 }
 
+impl FromStr for Name {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self::new(s))
+    }
+}
+
 impl Name {
-    pub fn labels(&self) -> impl Iterator<Item = &str> {
+    pub fn new(s: &str) -> Self {
+        let labels = s
+            .split('.')
+            .map(|label| Label {
+                len: label.len() as u8,
+                data: label.as_bytes().to_vec(),
+            })
+            .collect();
+
+        Self { labels }
+    }
+
+    pub fn labels(&self) -> impl DoubleEndedIterator<Item = &str> {
         self.labels
             .iter()
             .filter(|label| label.len != 0)
@@ -115,7 +151,27 @@ impl Name {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, DekuRead, DekuWrite)]
+impl fmt::Debug for Name {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "\"")?;
+        for label in self.labels() {
+            write!(f, "{}.", label)?;
+        }
+        write!(f, "\"")?;
+        Ok(())
+    }
+}
+
+impl fmt::Display for Name {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for label in self.labels() {
+            write!(f, "{}.", label)?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Hash, PartialEq, Eq, DekuRead, DekuWrite)]
 #[deku(endian = "endian", ctx = "endian: deku::ctx::Endian")]
 pub struct Label {
     #[deku(update = "self.data.len()")]
@@ -133,6 +189,12 @@ impl Label {
 impl fmt::Display for Label {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.as_str())
+    }
+}
+
+impl fmt::Debug for Label {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self, f)
     }
 }
 
@@ -181,29 +243,12 @@ pub enum QClass {
 
 #[test]
 fn decode_query() {
-    use deku::bitvec::BitSlice;
-
     let data: &[u8] = &[
         100, 68, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 3, 102, 111, 111, 5, 108, 111, 99, 97, 108, 3, 100,
         101, 118, 0, 0, 255, 0, 1, 0, 0, 41, 2, 0, 0, 0, 0, 0, 0, 0,
     ];
 
-    let ((rest, count), message) = Message::from_bytes((data, 0)).unwrap();
+    let ((rest, _count), message) = Message::from_bytes((data, 0)).unwrap();
     println!("Message: {message:#?}");
     println!("Rest: {rest:?}");
-
-    // let (rest, header) = Header::read(BitSlice::from_slice(data), deku::ctx::Endian::Big).unwrap();
-    // println!("Header: {header:#?}");
-
-    // let (rest, question) = Question::read(rest, deku::ctx::Endian::Big).unwrap();
-    // println!("Question: {question:#?}");
-
-    // let (rest, name) = Name::read(rest, deku::ctx::Endian::Big).unwrap();
-    // println!("Name: {name:#?}");
-
-    // let (rest, qtype) = QType::read(rest, deku::ctx::Endian::Big).unwrap();
-    // dbg!(qtype);
-
-    // let (rest, qclass) = QClass::read(rest, deku::ctx::Endian::Big).unwrap();
-    // dbg!(qclass);
 }

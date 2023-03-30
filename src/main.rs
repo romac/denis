@@ -2,7 +2,9 @@ use clap::Parser;
 use color_eyre::Report;
 
 pub mod data;
+pub mod db;
 pub mod server;
+pub mod trie;
 
 #[derive(Debug, Parser)]
 struct Args {
