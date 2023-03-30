@@ -10,13 +10,44 @@ const MAX_MESSAGE_SIZE: usize = 512;
 use crate::{
     data::{Flags, Header, Message, Question, ResourceRecord},
     db::Db,
-    record::Record,
 };
 
-pub async fn run(db: &Path, listen_addr: (&str, u16)) -> Result<(), Report> {
-    let db = Arc::new(crate::db::load(db)?);
+#[derive(Clone, Debug)]
+struct Forwarder {
+    socket: Arc<UdpSocket>,
+}
 
+impl Forwarder {
+    pub async fn connect(addr: SocketAddr) -> Result<Self, Report> {
+        let socket = Arc::new(UdpSocket::bind("0.0.0.0:0").await?);
+        socket.connect(addr).await?;
+
+        info!(
+            "Connected to upstream at {}",
+            addr.to_string().cyan().underline(),
+        );
+
+        Ok(Self { socket })
+    }
+
+    pub async fn forward(&self, data: &[u8]) -> Result<Vec<u8>, Report> {
+        self.socket.send(data).await?;
+
+        let mut buf = [0; MAX_MESSAGE_SIZE];
+        let count = self.socket.recv(&mut buf).await?;
+
+        Ok(buf[..count].to_vec())
+    }
+}
+
+pub async fn run(
+    db: &Path,
+    listen_addr: (&str, u16),
+    upstream_addr: SocketAddr,
+) -> Result<(), Report> {
+    let db = Arc::new(crate::db::load(db)?);
     let socket = Arc::new(UdpSocket::bind(listen_addr).await?);
+    let forwarder = Forwarder::connect(upstream_addr).await?;
 
     info!(
         "Listening on {}",
@@ -33,6 +64,7 @@ pub async fn run(db: &Path, listen_addr: (&str, u16)) -> Result<(), Report> {
 
         tokio::spawn(handle_request(
             db.clone(),
+            forwarder.clone(),
             socket.clone(),
             data.to_vec(),
             addr,
@@ -40,7 +72,21 @@ pub async fn run(db: &Path, listen_addr: (&str, u16)) -> Result<(), Report> {
     }
 }
 
-async fn handle_request(db: Arc<Db>, socket: Arc<UdpSocket>, data: Vec<u8>, addr: SocketAddr) {
+async fn forward(forwarder: &Forwarder, data: &[u8]) -> Result<Message, Report> {
+    // let data = msg.to_bytes()?;
+    let data = forwarder.forward(data).await?;
+    debug!("received: {:?}", data);
+    let (_, msg) = Message::from_bytes((&data, 0))?;
+    Ok(msg)
+}
+
+async fn handle_request(
+    db: Arc<Db>,
+    forwarder: Forwarder,
+    socket: Arc<UdpSocket>,
+    data: Vec<u8>,
+    addr: SocketAddr,
+) {
     let message = match Message::from_bytes((&data, 0)) {
         Ok((_, message)) => message,
         Err(err) => {
@@ -51,8 +97,19 @@ async fn handle_request(db: Arc<Db>, socket: Arc<UdpSocket>, data: Vec<u8>, addr
 
     debug!("Handling message: {message:#?}");
 
-    let response = match handle_message(&db, message).await {
-        Ok(response) => response,
+    let response = match handle_message(&db, &message).await {
+        Ok(Some(response)) => response,
+        Ok(None) => {
+            debug!("Forwarding request to upstream");
+
+            match forward(&forwarder, &data).await {
+                Ok(response) => response,
+                Err(err) => {
+                    error!("Failed to forward request: {err}");
+                    return;
+                }
+            }
+        }
         Err(err) => {
             error!("Failed to handle message: {err}");
             return;
@@ -76,12 +133,16 @@ async fn handle_request(db: Arc<Db>, socket: Arc<UdpSocket>, data: Vec<u8>, addr
     }
 }
 
-async fn handle_message(db: &Db, message: Message) -> Result<Message, Report> {
+async fn handle_message(db: &Db, message: &Message) -> Result<Option<Message>, Report> {
     let answers = message
         .questions
         .iter()
         .map(|q| answer_question(db, q))
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<Result<Option<Vec<_>>, _>>()?;
+
+    let Some(answers) = answers else {
+        return Ok(None);
+    };
 
     let header = Header {
         id: message.header.id,
@@ -100,23 +161,21 @@ async fn handle_message(db: &Db, message: Message) -> Result<Message, Report> {
         additionals: vec![],
     };
 
-    Ok(response)
+    Ok(Some(response))
 }
 
-fn answer_question(db: &Db, question: &Question) -> Result<ResourceRecord, Report> {
-    let no_such_domain = Record::TXT {
-        text: "No such domain".to_string(),
-    };
-
+fn answer_question(db: &Db, question: &Question) -> Result<Option<ResourceRecord>, Report> {
     info!(
         "<== {:<60}    {:?}",
         question.qname.blue().bold().to_string(),
         question.qtype.green().bold(),
     );
 
-    let record = db
-        .lookup(&question.qname, question.qtype)
-        .unwrap_or(&no_such_domain);
+    let record = db.lookup(&question.qname, question.qtype);
+
+    let Some(record) = record else {
+            return Ok(None);
+        };
 
     info!(
         "==> {:<60}    {}",
@@ -137,5 +196,5 @@ fn answer_question(db: &Db, question: &Question) -> Result<ResourceRecord, Repor
         options_length: None,
     };
 
-    Ok(answer)
+    Ok(Some(answer))
 }
