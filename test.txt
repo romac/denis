@@ -1,0 +1,6 @@
+# Example
+example.com    CNAME    example.com.s3-website-us-east-1.amazonaws.com.
+
+# Local domains
+*.local.dev    A        127.0.0.1
+local.dev      CNAME    localhost.
