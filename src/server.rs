@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, path::Path, sync::Arc};
+use std::{net::SocketAddr, path::Path, sync::Arc, time::Instant};
 
 use color_eyre::{owo_colors::OwoColorize, Report};
 use deku::{DekuContainerRead, DekuContainerWrite};
@@ -163,8 +163,10 @@ async fn handle_message(db: &Db, message: &Message) -> Result<Option<Message>, R
 }
 
 fn answer_question(db: &Db, question: &Question) -> Result<Option<ResourceRecord>, Report> {
+    let now = Instant::now();
+
     info!(
-        "<== {:<60}    {:?}",
+        "<== {:<50}    {:?}",
         question.qname.blue().bold().to_string(),
         question.qtype.green().bold(),
     );
@@ -175,24 +177,27 @@ fn answer_question(db: &Db, question: &Question) -> Result<Option<ResourceRecord
             return Ok(None);
         };
 
-    info!(
-        "==> {:<60}    {}",
-        question.qname.blue().bold().to_string(),
-        record
-    );
-
     let data = record.to_bytes();
 
     let answer = ResourceRecord {
         name: question.qname.clone(),
         qtype: record.qtype(),
         qclass: record.qclass(),
-        ttl: 120,
+        ttl: 1,
         rdlength: data.len() as u16,
         data,
         options_code: None,
         options_length: None,
     };
+
+    let elapsed = now.elapsed().as_millis();
+
+    info!(
+        "==> {:<50}    {}          {}",
+        question.qname.blue().bold().to_string(),
+        record,
+        format!("{elapsed}ms").dimmed()
+    );
 
     Ok(Some(answer))
 }
