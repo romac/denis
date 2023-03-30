@@ -3,6 +3,7 @@
 use core::fmt;
 use std::str::FromStr;
 
+use color_eyre::{eyre::eyre, Report};
 use deku::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, Eq, DekuRead, DekuWrite)]
@@ -225,6 +226,43 @@ pub enum QType {
     MAILB = 253,
     MAILA = 254,
     ANY = 255,
+}
+
+impl fmt::Display for QType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(self, f)
+    }
+}
+
+impl FromStr for QType {
+    type Err = Report;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "A" => Ok(QType::A),
+            "NS" => Ok(QType::NS),
+            "MD" => Ok(QType::MD),
+            "MF" => Ok(QType::MF),
+            "CNAME" => Ok(QType::CNAME),
+            "SOA" => Ok(QType::SOA),
+            "MB" => Ok(QType::MB),
+            "MG" => Ok(QType::MG),
+            "MR" => Ok(QType::MR),
+            "NULL" => Ok(QType::NULL),
+            "WKS" => Ok(QType::WKS),
+            "PTR" => Ok(QType::PTR),
+            "HINFO" => Ok(QType::HINFO),
+            "MINFO" => Ok(QType::MINFO),
+            "MX" => Ok(QType::MX),
+            "TXT" => Ok(QType::TXT),
+            "OPT" => Ok(QType::OPT),
+            "AXFR" => Ok(QType::AXFR),
+            "MAILB" => Ok(QType::MAILB),
+            "MAILA" => Ok(QType::MAILA),
+            "ANY" => Ok(QType::ANY),
+            s => Err(eyre!("Invalid QType: {s}")),
+        }
+    }
 }
 
 #[repr(u16)]

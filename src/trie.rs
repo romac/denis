@@ -1,15 +1,17 @@
 use std::collections::HashMap;
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Key {
     Label(String),
     Wildcard,
 }
 
+#[derive(Clone, Debug)]
 pub struct DnsTrie<Value> {
     root: Node<Value>,
 }
 
+#[derive(Clone, Debug, Default)]
 pub struct Node<Value> {
     children: HashMap<Key, Node<Value>>,
     value: Option<Value>,
@@ -17,16 +19,25 @@ pub struct Node<Value> {
 
 impl<Value> Default for DnsTrie<Value> {
     fn default() -> Self {
-        Self::new()
+        Self {
+            root: Node {
+                children: HashMap::new(),
+                value: None,
+            },
+        }
     }
 }
 
 impl<Value> DnsTrie<Value> {
     pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn leaf(value: Value) -> Self {
         Self {
             root: Node {
                 children: HashMap::new(),
-                value: None,
+                value: Some(value),
             },
         }
     }
