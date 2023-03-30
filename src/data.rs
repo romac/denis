@@ -4,7 +4,10 @@ use core::fmt;
 use std::str::FromStr;
 
 use color_eyre::{eyre::eyre, Report};
-use deku::prelude::*;
+use deku::{
+    bitvec::{BitSlice, BitVec, BitView, Msb0},
+    prelude::*,
+};
 
 #[derive(Clone, Debug, PartialEq, Eq, DekuRead, DekuWrite)]
 pub struct Message {
@@ -117,55 +120,48 @@ pub struct ResourceRecord {
     pub options_length: Option<u8>,
 }
 
-#[derive(Clone, PartialEq, Eq, DekuRead, DekuWrite)]
-pub struct Name {
-    #[deku(until = "|label: &Label| label.len == 0")]
-    labels: Vec<Label>,
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum Name {
+    Pointer { len: u8, offset: u8 }, // FIXME: u16?
+    Text { labels: Vec<Label> },
 }
 
 impl FromStr for Name {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Self::new(s))
+        Ok(Self::new(s.to_string()))
     }
 }
 
 impl Name {
-    pub fn new(s: &str) -> Self {
-        let labels = s
+    pub fn new(data: String) -> Self {
+        let labels = data
             .split('.')
-            .map(|label| Label {
-                len: label.len() as u8,
-                data: label.as_bytes().to_vec(),
-            })
+            .map(|label| Label::new(label.to_string()))
             .collect();
 
-        Self { labels }
+        Self::Text { labels }
     }
 
-    pub fn labels(&self) -> impl DoubleEndedIterator<Item = &str> {
-        self.labels
-            .iter()
-            .filter(|label| label.len != 0)
-            .map(|label| label.as_str())
+    pub fn is_empty(&self) -> bool {
+        match self {
+            Self::Pointer { len, .. } => *len == 0,
+            Self::Text { labels } => labels.is_empty(),
+        }
+    }
+
+    pub fn labels(&self) -> &[Label] {
+        match self {
+            Self::Pointer { .. } => panic!("Cannot get labels from a pointer"),
+            Self::Text { labels } => labels.as_slice(),
+        }
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut output = deku::bitvec::BitVec::new();
         deku::DekuWrite::write(self, &mut output, ()).unwrap();
         output.into_vec()
-    }
-}
-
-impl fmt::Debug for Name {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "\"")?;
-        for label in self.labels() {
-            write!(f, "{}.", label)?;
-        }
-        write!(f, "\"")?;
-        Ok(())
     }
 }
 
@@ -178,39 +174,117 @@ impl fmt::Display for Name {
     }
 }
 
-// #[derive(Clone, Hash, PartialEq, Eq, DekuWrite)]
-// #[deku(endian = "endian", ctx = "endian: deku::ctx::Endian")]
-// pub struct Label(String);
+impl<'a> DekuContainerRead<'a> for Name {
+    fn from_bytes(input: (&'a [u8], usize)) -> Result<((&'a [u8], usize), Self), DekuError>
+    where
+        Self: Sized,
+    {
+        let input_bits = input.0.view_bits::<::deku::bitvec::Msb0>();
+        let (rest, name) = Name::read(input_bits, ())?;
 
-// impl Label {
-//     pub fn as_str(&self) -> &str {
-//         self.0.as_str()
-//     }
-// }
+        let pad = 8 * ((rest.len() + 7) / 8) - rest.len();
+        let read_idx = input_bits.len() - (rest.len() + pad);
 
-// impl<'a> DekuRead<'a> for Label {
-//     fn read(
-//         input: &'a deku::bitvec::BitSlice<u8, deku::bitvec::Msb0>,
-//         ctx: (),
-//     ) -> Result<(&'a deku::bitvec::BitSlice<u8, deku::bitvec::Msb0>, Self), DekuError>
-//     where
-//         Self: Sized,
-//     {
-//         todo!()
-//     }
-// }
-
-#[derive(Clone, Hash, PartialEq, Eq, DekuRead, DekuWrite)]
-pub struct Label {
-    #[deku(update = "self.data.len()")]
-    pub len: u8,
-    #[deku(count = "len")]
-    pub data: Vec<u8>,
+        Ok((
+            (input_bits[read_idx..].domain().region().unwrap().1, pad),
+            name,
+        ))
+    }
 }
 
+impl<'a> DekuRead<'a> for Name {
+    fn read(
+        input: &'a BitSlice<u8, Msb0>,
+        _ctx: (),
+    ) -> Result<(&'a BitSlice<u8, Msb0>, Self), DekuError>
+    where
+        Self: Sized,
+    {
+        let (input, len) = u8::read(input, ())?;
+
+        if len & 0b1100_0000 == 0b1100_0000 {
+            // FIXME: read the next 14 bits as a u16?
+            let (input, offset) = u8::read(input, ())?;
+
+            Ok((
+                input,
+                Self::Pointer {
+                    len: len & 0b0011_1111,
+                    offset,
+                },
+            ))
+        } else {
+            let (input, labels) = parse_labels(input, len)?;
+            Ok((input, Self::Text { labels }))
+        }
+    }
+}
+
+fn parse_labels(
+    input: &BitSlice<u8, Msb0>,
+    initial_len: u8,
+) -> Result<(&BitSlice<u8, Msb0>, Vec<Label>), DekuError> {
+    let mut labels = Vec::new();
+    let mut input = input;
+
+    let data = input[0..initial_len as usize * 8].to_bitvec().into_vec();
+    labels.push(Label::new(String::from_utf8(data).unwrap()));
+    input = input.split_at(initial_len as usize * 8).1;
+
+    loop {
+        let (rest, len) = u8::read(input, ())?;
+
+        if len == 0 {
+            input = rest;
+            break;
+        }
+
+        let data = rest[0..len as usize * 8].to_bitvec().into_vec();
+        labels.push(Label::new(String::from_utf8(data).unwrap()));
+        input = rest.split_at(len as usize * 8).1;
+    }
+
+    Ok((input, labels))
+}
+
+impl DekuWrite for Name {
+    fn write(&self, output: &mut BitVec<u8, Msb0>, _ctx: ()) -> Result<(), DekuError>
+    where
+        Self: Sized,
+    {
+        match self {
+            Self::Pointer { len, offset } => {
+                u8::write(&(*len | 0b1100_0000), output, ())?;
+                u8::write(offset, output, ())?;
+            }
+            Self::Text { labels } => {
+                for label in labels {
+                    u8::write(&(label.as_str().len() as u8), output, ())?;
+                    output.extend_from_raw_slice(label.as_str().as_bytes());
+                }
+
+                u8::write(&0, output, ())?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Clone, Hash, PartialEq, Eq)]
+pub struct Label(String);
+
 impl Label {
+    pub fn new(data: String) -> Self {
+        if data.len() > 63 {
+            panic!("Label too long");
+        }
+
+        Self(data)
+    }
+
     pub fn as_str(&self) -> &str {
-        std::str::from_utf8(&self.data).unwrap()
+        self.0.as_str()
     }
 }
 
@@ -222,7 +296,7 @@ impl fmt::Display for Label {
 
 impl fmt::Debug for Label {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(self, f)
+        write!(f, "\"{}\"", self.as_str())
     }
 }
 
@@ -334,16 +408,7 @@ mod tests {
             1, 0, 0, 0, 1, 0, 4, 209, 216, 230, 240,
         ];
 
-        let (rest, header) = Header::from_bytes((data, 0)).unwrap();
-        println!("Header: {header:#?}");
-
-        let (rest, question) = Question::from_bytes(rest).unwrap();
-        println!("Question: {question:#?}");
-
-        let (_, name) = Name::from_bytes(rest).unwrap();
-        println!("Name: {name:#?}");
-
-        let (rest, answer) = ResourceRecord::from_bytes(rest).unwrap();
-        println!("Answer: {answer:#?}");
+        let (_, message) = Message::from_bytes((data, 0)).unwrap();
+        println!("Message: {message:#?}");
     }
 }

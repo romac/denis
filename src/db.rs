@@ -21,11 +21,12 @@ impl Db {
     pub fn insert(&mut self, name: &Name, record: Record) {
         let key = &name
             .labels()
+            .iter()
             .map(|label| {
-                if label == "*" {
+                if label.as_str() == "*" {
                     Key::Wildcard
                 } else {
-                    Key::Label(label.to_owned())
+                    Key::Label(label.as_str().to_string())
                 }
             })
             .rev()
@@ -37,7 +38,8 @@ impl Db {
     pub fn lookup(&self, name: &Name, qtype: QType) -> Option<&Record> {
         let key = &name
             .labels()
-            .map(|label| Key::Label(label.to_owned()))
+            .iter()
+            .map(|label| Key::Label(label.to_string()))
             .rev()
             .collect::<Vec<_>>();
 
@@ -82,7 +84,7 @@ fn parse_line(line: &str) -> Result<(Name, Record), Report> {
     let qtype = parts.next().unwrap();
     let data = parts.next().unwrap();
 
-    let name = Name::new(name);
+    let name = Name::new(name.to_string());
     let qtype = QType::from_str(qtype)?;
 
     let record = match qtype {
@@ -90,7 +92,7 @@ fn parse_line(line: &str) -> Result<(Name, Record), Report> {
             address: parse_ip(data)?,
         },
         QType::CNAME => Record::CNAME {
-            name: Name::new(data),
+            name: Name::new(data.to_string()),
         },
         other => return Err(eyre!("unsupported record type: {}", other)),
     };
@@ -121,7 +123,7 @@ mod tests {
     fn normal() {
         let mut db = Db::new();
 
-        let name = Name::new("example.com");
+        let name = Name::new("example.com".to_string());
         let record = Record::A {
             address: [1, 1, 1, 1],
         };
@@ -135,7 +137,7 @@ mod tests {
     fn normal_wrong_class() {
         let mut db = Db::new();
 
-        let name = Name::new("example.com");
+        let name = Name::new("example.com".to_string());
         let record = Record::A {
             address: [1, 1, 1, 1],
         };
@@ -153,10 +155,10 @@ mod tests {
             address: [127, 0, 0, 1],
         };
 
-        db.insert(&Name::new("*.local.dev"), record.clone());
+        db.insert(&Name::new("*.local.dev".to_string()), record.clone());
 
         assert_eq!(
-            db.lookup(&Name::new("denis.local.dev"), QType::A),
+            db.lookup(&Name::new("denis.local.dev".to_string()), QType::A),
             Some(&record)
         );
     }
@@ -169,9 +171,12 @@ mod tests {
             address: [127, 0, 0, 1],
         };
 
-        db.insert(&Name::new("*.local.dev"), record);
+        db.insert(&Name::new("*.local.dev".to_string()), record);
 
-        assert_eq!(db.lookup(&Name::new("denis.local.dev"), QType::CNAME), None);
+        assert_eq!(
+            db.lookup(&Name::new("denis.local.dev".to_string()), QType::CNAME),
+            None
+        );
     }
 
     #[test]
@@ -188,14 +193,14 @@ mod tests {
         dbg!(&db);
 
         assert_eq!(
-            db.lookup(&Name::new("example.com"), QType::CNAME),
+            db.lookup(&Name::new("example.com".to_string()), QType::CNAME),
             Some(&Record::CNAME {
-                name: Name::new("www.example.com"),
+                name: Name::new("www.example.com".to_string()),
             })
         );
 
         assert_eq!(
-            db.lookup(&Name::new("denis.local.dev"), QType::A),
+            db.lookup(&Name::new("denis.local.dev".to_string()), QType::A),
             Some(&Record::A {
                 address: [127, 0, 0, 1],
             })

@@ -73,9 +73,7 @@ pub async fn run(
 }
 
 async fn forward(forwarder: &Forwarder, data: &[u8]) -> Result<Message, Report> {
-    // let data = msg.to_bytes()?;
     let data = forwarder.forward(data).await?;
-    debug!("received: {:?}", data);
     let (_, msg) = Message::from_bytes((&data, 0))?;
     Ok(msg)
 }
