@@ -122,7 +122,7 @@ pub struct ResourceRecord {
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Name {
-    Pointer { len: u8, offset: u8 }, // FIXME: u16?
+    Pointer { len: u8, offset: u8 }, // FIXME: offset = u16?
     Text { labels: Vec<Label> },
 }
 
@@ -301,7 +301,7 @@ impl fmt::Debug for Label {
 }
 
 #[repr(u16)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq, DekuRead, DekuWrite)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, DekuRead, DekuWrite)]
 #[deku(type = "u16", endian = "big")]
 pub enum QType {
     A = 1,
@@ -372,7 +372,7 @@ impl FromStr for QType {
 }
 
 #[repr(u16)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq, DekuRead, DekuWrite)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, DekuRead, DekuWrite)]
 #[deku(type = "u16", endian = "big")]
 pub enum QClass {
     NONE = 0,

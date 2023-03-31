@@ -1,4 +1,5 @@
 use core::fmt;
+use std::collections::HashMap;
 
 use color_eyre::owo_colors::OwoColorize;
 
@@ -53,5 +54,44 @@ impl fmt::Display for Record {
             Record::CNAME { name } => write!(f, "{:<8} {}", "CNAME".green().bold(), name),
             Record::TXT { text } => write!(f, "{:<8} {}", "TXT".green().bold(), text.italic()),
         }
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct RecordMap {
+    records: HashMap<QType, Record>,
+}
+
+impl RecordMap {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn insert(&mut self, record: Record) {
+        self.records.insert(record.qtype(), record);
+    }
+
+    pub fn get(&self, qtype: QType) -> Option<&Record> {
+        self.records.get(&qtype)
+    }
+
+    // pub fn get_mut(&mut self, qtype: QType) -> Option<&mut Record> {
+    //     self.records.get_mut(&qtype)
+    // }
+
+    pub fn remove(&mut self, qtype: QType) -> Option<Record> {
+        self.records.remove(&qtype)
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&QType, &Record)> {
+        self.records.iter()
+    }
+
+    // pub fn iter_mut(&mut self) -> impl Iterator<Item = (&QType, &mut Record)> {
+    //     self.records.iter_mut()
+    // }
+
+    pub fn is_empty(&self) -> bool {
+        self.records.is_empty()
     }
 }
