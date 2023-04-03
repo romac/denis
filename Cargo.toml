@@ -12,3 +12,6 @@ deku = "0.16.0"
 tokio = { version = "1.27.0", features = ["full"] }
 tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
+
+[patch.crates-io]
+deku = { git = "https://github.com/romac/deku", branch = "romac/read-ctx" }

@@ -5,20 +5,20 @@ use std::str::FromStr;
 
 use color_eyre::{eyre::eyre, Report};
 use deku::{
-    bitvec::{BitSlice, BitVec, BitView, Msb0},
+    bitvec::{BitSlice, BitVec, Msb0},
     prelude::*,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, DekuRead, DekuWrite)]
 pub struct Message {
     pub header: Header,
-    #[deku(count = "header.qdcount")]
+    #[deku(count = "header.qdcount", read_ctx = "deku::input_bits")]
     pub questions: Vec<Question>,
-    #[deku(count = "header.ancount")]
+    #[deku(count = "header.ancount", read_ctx = "deku::input_bits")]
     pub answers: Vec<ResourceRecord>,
-    #[deku(count = "header.nscount")]
+    #[deku(count = "header.nscount", read_ctx = "deku::input_bits")]
     pub authorities: Vec<ResourceRecord>,
-    #[deku(count = "header.arcount")]
+    #[deku(count = "header.arcount", read_ctx = "deku::input_bits")]
     pub additionals: Vec<ResourceRecord>,
 }
 
@@ -92,15 +92,20 @@ pub enum RCode {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, DekuRead, DekuWrite)]
+#[deku(read_ctx = "input: &'__deku_input BitSlice<u8, Msb0>")]
 pub struct Question {
+    #[deku(read_ctx = "input")]
     pub qname: Name,
     pub qtype: QType,
     pub qclass: QClass,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, DekuRead, DekuWrite)]
+#[deku(read_ctx = "input: &'__deku_input BitSlice<u8, Msb0>")]
 pub struct ResourceRecord {
+    #[deku(read_ctx = "input")]
     pub name: Name,
+
     pub qtype: QType,
 
     #[deku(cond = "*qtype != QType::OPT", default = "QClass::NONE")]
@@ -120,10 +125,9 @@ pub struct ResourceRecord {
     pub options_length: Option<u8>,
 }
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub enum Name {
-    Pointer { len: u8, offset: u8 }, // FIXME: offset = u16?
-    Text { labels: Vec<Label> },
+#[derive(Clone, Hash, PartialEq, Eq)]
+pub struct Name {
+    labels: Vec<Label>,
 }
 
 impl FromStr for Name {
@@ -141,21 +145,15 @@ impl Name {
             .map(|label| Label::new(label.to_string()))
             .collect();
 
-        Self::Text { labels }
+        Self { labels }
     }
 
     pub fn is_empty(&self) -> bool {
-        match self {
-            Self::Pointer { len, .. } => *len == 0,
-            Self::Text { labels } => labels.is_empty(),
-        }
+        self.labels.is_empty()
     }
 
     pub fn labels(&self) -> &[Label] {
-        match self {
-            Self::Pointer { .. } => panic!("Cannot get labels from a pointer"),
-            Self::Text { labels } => labels.as_slice(),
-        }
+        self.labels.as_slice()
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
@@ -167,55 +165,51 @@ impl Name {
 
 impl fmt::Display for Name {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for label in self.labels() {
-            write!(f, "{}.", label)?;
+        let mut labels = self.labels.iter();
+
+        if let Some(label) = labels.next() {
+            write!(f, "{}", label)?;
         }
+
+        for label in labels {
+            write!(f, ".{}", label)?;
+        }
+
         Ok(())
     }
 }
 
-impl<'a> DekuContainerRead<'a> for Name {
-    fn from_bytes(input: (&'a [u8], usize)) -> Result<((&'a [u8], usize), Self), DekuError>
-    where
-        Self: Sized,
-    {
-        let input_bits = input.0.view_bits::<::deku::bitvec::Msb0>();
-        let (rest, name) = Name::read(input_bits, ())?;
-
-        let pad = 8 * ((rest.len() + 7) / 8) - rest.len();
-        let read_idx = input_bits.len() - (rest.len() + pad);
-
-        Ok((
-            (input_bits[read_idx..].domain().region().unwrap().1, pad),
-            name,
-        ))
+impl fmt::Debug for Name {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self, f)
     }
 }
 
-impl<'a> DekuRead<'a> for Name {
+impl<'a, '__deku_input> DekuRead<'a, &'__deku_input BitSlice<u8, Msb0>> for Name {
     fn read(
         input: &'a BitSlice<u8, Msb0>,
-        _ctx: (),
+        ctx: &'__deku_input BitSlice<u8, Msb0>,
     ) -> Result<(&'a BitSlice<u8, Msb0>, Self), DekuError>
     where
         Self: Sized,
     {
         let (input, len) = u8::read(input, ())?;
 
+        if len == 0 {
+            return Ok((input, Self { labels: vec![] }));
+        }
+
         if len & 0b1100_0000 == 0b1100_0000 {
             // FIXME: read the next 14 bits as a u16?
             let (input, offset) = u8::read(input, ())?;
+            let offset = offset as usize * 8;
 
-            Ok((
-                input,
-                Self::Pointer {
-                    len: len & 0b0011_1111,
-                    offset,
-                },
-            ))
+            let (_, len) = u8::read(&ctx[offset..], ())?;
+            let (_, labels) = parse_labels(&ctx[offset + 8..], len)?;
+            Ok((input, Self { labels }))
         } else {
             let (input, labels) = parse_labels(input, len)?;
-            Ok((input, Self::Text { labels }))
+            Ok((input, Self { labels }))
         }
     }
 }
@@ -252,20 +246,12 @@ impl DekuWrite for Name {
     where
         Self: Sized,
     {
-        match self {
-            Self::Pointer { len, offset } => {
-                u8::write(&(*len | 0b1100_0000), output, ())?;
-                u8::write(offset, output, ())?;
-            }
-            Self::Text { labels } => {
-                for label in labels {
-                    u8::write(&(label.as_str().len() as u8), output, ())?;
-                    output.extend_from_raw_slice(label.as_str().as_bytes());
-                }
-
-                u8::write(&0, output, ())?;
-            }
+        for label in &self.labels {
+            u8::write(&(label.as_str().len() as u8), output, ())?;
+            output.extend_from_raw_slice(label.as_str().as_bytes());
         }
+
+        u8::write(&0, output, ())?;
 
         Ok(())
     }
