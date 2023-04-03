@@ -1,20 +1,71 @@
+use core::fmt;
 use std::collections::HashMap;
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub enum Key {
     Label(String),
     Wildcard,
 }
 
-#[derive(Clone, Debug)]
+impl fmt::Display for Key {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Label(label) => write!(f, "{label}"),
+            Self::Wildcard => write!(f, "*"),
+        }
+    }
+}
+
+impl fmt::Debug for Key {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self, f)
+    }
+}
+
+#[derive(Clone)]
 pub struct DnsTrie<Value> {
     root: Node<Value>,
 }
 
-#[derive(Clone, Debug)]
+impl<Value: fmt::Debug> fmt::Debug for DnsTrie<Value> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(&self.root, f)
+    }
+}
+
+#[derive(Clone)]
 pub struct Node<Value> {
     children: HashMap<Key, Node<Value>>,
     value: Option<Value>,
+}
+
+fn pretty<Value: fmt::Debug>(
+    node: &Node<Value>,
+    indent: usize,
+    f: &mut fmt::Formatter,
+) -> fmt::Result {
+    let spacer = "└──";
+
+    if indent == 0 {
+        write!(f, "\n.")?;
+    }
+
+    for (key, child) in node.children.iter() {
+        write!(f, "\n{:indent$}{spacer} {key:?}", "")?;
+        pretty(child, indent + 4, f)?;
+    }
+
+    if let Some(value) = &node.value {
+        write!(f, "\n{:indent$}{spacer} {value:?}", "")?;
+    }
+
+    Ok(())
+}
+
+impl<Value: fmt::Debug> fmt::Debug for Node<Value> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        pretty(self, 0, f)
+    }
 }
 
 impl<Value> Default for Node<Value> {

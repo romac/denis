@@ -1,3 +1,4 @@
+use core::fmt;
 use std::{path::Path, str::FromStr};
 
 use color_eyre::{eyre::eyre, Report};
@@ -8,9 +9,15 @@ use crate::{
     trie::{DnsTrie, Key},
 };
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
 pub struct Db {
     trie: DnsTrie<Record>,
+}
+
+impl fmt::Debug for Db {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(&self.trie, f)
+    }
 }
 
 impl Db {
