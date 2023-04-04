@@ -165,6 +165,10 @@ impl Name {
 
 impl fmt::Display for Name {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.is_empty() {
+            return write!(f, ".");
+        }
+
         let mut labels = self.labels.iter();
 
         if let Some(label) = labels.next() {
@@ -200,12 +204,12 @@ impl<'a, '__deku_input> DekuRead<'a, &'__deku_input BitSlice<u8, Msb0>> for Name
         }
 
         if len & 0b1100_0000 == 0b1100_0000 {
-            // FIXME: read the next 14 bits as a u16?
-            let (input, offset) = u8::read(input, ())?;
-            let offset = offset as usize * 8;
+            let len = len & 0b0011_1111;
 
-            let (_, len) = u8::read(&ctx[offset..], ())?;
-            let (_, labels) = parse_labels(&ctx[offset + 8..], len)?;
+            let (input, offset) = u8::read(input, ())?;
+            let offset = (len | offset) as usize * 8;
+
+            let (_, labels) = parse_labels(&ctx[offset..], len)?;
             Ok((input, Self { labels }))
         } else {
             let (input, labels) = parse_labels(input, len)?;
@@ -218,12 +222,16 @@ fn parse_labels(
     input: &BitSlice<u8, Msb0>,
     initial_len: u8,
 ) -> Result<(&BitSlice<u8, Msb0>, Vec<Label>), DekuError> {
+    if initial_len == 0 {
+        return Ok((input, vec![]));
+    }
+
     let mut labels = Vec::new();
     let mut input = input;
 
     let data = input[0..initial_len as usize * 8].to_bitvec().into_vec();
     labels.push(Label::new(String::from_utf8(data).unwrap()));
-    input = input.split_at(initial_len as usize * 8).1;
+    input = &input[initial_len as usize * 8..];
 
     loop {
         let (rest, len) = u8::read(input, ())?;
@@ -235,7 +243,7 @@ fn parse_labels(
 
         let data = rest[0..len as usize * 8].to_bitvec().into_vec();
         labels.push(Label::new(String::from_utf8(data).unwrap()));
-        input = rest.split_at(len as usize * 8).1;
+        input = &rest[len as usize * 8..];
     }
 
     Ok((input, labels))
@@ -392,6 +400,31 @@ mod tests {
             13, 208, 129, 128, 0, 1, 0, 1, 0, 0, 0, 0, 4, 110, 101, 119, 115, 11, 121, 99, 111,
             109, 98, 105, 110, 97, 116, 111, 114, 3, 99, 111, 109, 0, 0, 1, 0, 1, 192, 12, 0, 1, 0,
             1, 0, 0, 0, 1, 0, 4, 209, 216, 230, 240,
+        ];
+
+        let (_, message) = Message::from_bytes((data, 0)).unwrap();
+        println!("Message: {message:#?}");
+    }
+
+    #[test]
+    fn decode_unknown() {
+        // let data: &[u8] = &[
+        //     187, 76, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 3, 97, 112, 105, 14, 97, 112, 112, 108, 101, 45,
+        //     99, 108, 111, 117, 100, 107, 105, 116, 2, 102, 101, 9, 97, 112, 112, 108, 101, 45, 100,
+        //     110, 115, 3, 110, 101, 116, 0, 0, 1, 0, 1,
+        // ];
+
+        let data: &[u8] = &[
+            58, 211, 129, 128, 0, 1, 0, 2, 0, 1, 0, 0, 13, 99, 111, 110, 102, 105, 103, 117, 114,
+            97, 116, 105, 111, 110, 2, 108, 115, 5, 97, 112, 112, 108, 101, 3, 99, 111, 109, 0, 0,
+            65, 0, 1, 192, 12, 0, 5, 0, 1, 0, 0, 13, 244, 0, 37, 10, 103, 115, 112, 101, 49, 49,
+            45, 115, 115, 108, 2, 108, 115, 5, 97, 112, 112, 108, 101, 3, 99, 111, 109, 7, 101,
+            100, 103, 101, 107, 101, 121, 3, 110, 101, 116, 0, 192, 56, 0, 5, 0, 1, 0, 0, 84, 68,
+            0, 26, 6, 101, 49, 48, 52, 57, 57, 5, 100, 115, 99, 101, 57, 10, 97, 107, 97, 109, 97,
+            105, 101, 100, 103, 101, 192, 88, 192, 112, 0, 6, 0, 1, 0, 0, 3, 204, 0, 50, 7, 110,
+            48, 100, 115, 99, 101, 57, 192, 118, 10, 104, 111, 115, 116, 109, 97, 115, 116, 101,
+            114, 6, 97, 107, 97, 109, 97, 105, 192, 35, 100, 43, 245, 193, 0, 0, 3, 232, 0, 0, 3,
+            232, 0, 0, 3, 232, 0, 0, 7, 8,
         ];
 
         let (_, message) = Message::from_bytes((data, 0)).unwrap();

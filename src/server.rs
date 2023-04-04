@@ -74,6 +74,8 @@ pub async fn run(
 
 async fn forward(forwarder: &Forwarder, data: &[u8]) -> Result<Message, Report> {
     let data = forwarder.forward(data).await?;
+    trace!("Data received from upstream: {data:?}");
+
     let (_, msg) = Message::from_bytes((&data, 0))?;
     Ok(msg)
 }
@@ -114,7 +116,7 @@ async fn handle_request(
         }
     };
 
-    debug!("Response: {response:#?}");
+    // debug!("Response: {response:#?}");
 
     let response_data = match response.to_bytes() {
         Ok(data) => data,

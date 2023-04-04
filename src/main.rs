@@ -40,9 +40,9 @@ async fn main() -> Result<(), Report> {
 fn setup() -> Result<(), Report> {
     use tracing_subscriber::EnvFilter;
 
-    if std::env::var("RUST_LIB_BACKTRACE").is_err() {
-        std::env::set_var("RUST_LIB_BACKTRACE", "0")
-    }
+    // if std::env::var("RUST_LIB_BACKTRACE").is_err() {
+    //     std::env::set_var("RUST_LIB_BACKTRACE", "0")
+    // }
 
     color_eyre::install()?;
 
