@@ -1,10 +1,12 @@
 use core::fmt;
 use std::collections::BTreeMap;
 
+use crate::data::Label;
+
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Key {
     Wildcard,
-    Label(String),
+    Label(Label),
 }
 
 impl fmt::Display for Key {
@@ -140,8 +142,8 @@ mod tests {
     fn test_lookup_normal() {
         let mut trie = DnsTrie::new();
 
-        let foo = Key::Label("foo".to_string());
-        let bar = Key::Label("bar".to_string());
+        let foo = Key::Label(Label::new(b"foo".to_vec()));
+        let bar = Key::Label(Label::new(b"bar".to_vec()));
         let key = &[foo, bar];
 
         trie.insert(key, 1);
@@ -153,8 +155,8 @@ mod tests {
     fn test_lookup_wildcard() {
         let mut trie = DnsTrie::new();
 
-        let foo = Key::Label("foo".to_string());
-        let bar = Key::Label("bar".to_string());
+        let foo = Key::Label(Label::new(b"foo".to_vec()));
+        let bar = Key::Label(Label::new(b"bar".to_vec()));
 
         trie.insert(&[foo.clone()], 1);
         trie.insert(&[foo.clone(), Key::Wildcard], 2);
@@ -167,8 +169,8 @@ mod tests {
     fn test_lookup_none() {
         let mut trie = DnsTrie::new();
 
-        let foo = Key::Label("foo".to_string());
-        let bar = Key::Label("bar".to_string());
+        let foo = Key::Label(Label::new(b"foo".to_vec()));
+        let bar = Key::Label(Label::new(b"bar".to_vec()));
         let key = &[foo.clone(), bar.clone()];
 
         trie.insert(key, 1);

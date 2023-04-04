@@ -30,10 +30,10 @@ impl Db {
             .labels()
             .iter()
             .map(|label| {
-                if label.as_str() == "*" {
+                if label.as_bytes() == b"*" {
                     Key::Wildcard
                 } else {
-                    Key::Label(label.as_str().to_string())
+                    Key::Label(label.clone())
                 }
             })
             .rev()
@@ -46,7 +46,7 @@ impl Db {
         let key = &name
             .labels()
             .iter()
-            .map(|label| Key::Label(label.to_string()))
+            .map(|label| Key::Label(label.clone()))
             .rev()
             .collect::<Vec<_>>();
 

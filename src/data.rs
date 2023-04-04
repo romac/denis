@@ -142,7 +142,7 @@ impl Name {
     pub fn new(data: String) -> Self {
         let labels = data
             .split('.')
-            .map(|label| Label::new(label.to_string()))
+            .map(|label| Label::new(label.as_bytes().to_vec()))
             .collect();
 
         Self { labels }
@@ -230,7 +230,7 @@ fn parse_labels(
     let mut input = input;
 
     let data = input[0..initial_len as usize * 8].to_bitvec().into_vec();
-    labels.push(Label::new(String::from_utf8(data).unwrap()));
+    labels.push(Label::new(data));
     input = &input[initial_len as usize * 8..];
 
     loop {
@@ -242,7 +242,7 @@ fn parse_labels(
         }
 
         let data = rest[0..len as usize * 8].to_bitvec().into_vec();
-        labels.push(Label::new(String::from_utf8(data).unwrap()));
+        labels.push(Label::new(data));
         input = &rest[len as usize * 8..];
     }
 
@@ -255,8 +255,8 @@ impl DekuWrite for Name {
         Self: Sized,
     {
         for label in &self.labels {
-            u8::write(&(label.as_str().len() as u8), output, ())?;
-            output.extend_from_raw_slice(label.as_str().as_bytes());
+            u8::write(&(label.as_bytes().len() as u8), output, ())?;
+            output.extend_from_raw_slice(label.as_bytes());
         }
 
         u8::write(&0, output, ())?;
@@ -265,11 +265,11 @@ impl DekuWrite for Name {
     }
 }
 
-#[derive(Clone, Hash, PartialEq, Eq)]
-pub struct Label(String);
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Label(Vec<u8>);
 
 impl Label {
-    pub fn new(data: String) -> Self {
+    pub fn new(data: Vec<u8>) -> Self {
         if data.len() > 63 {
             panic!("Label too long");
         }
@@ -277,20 +277,20 @@ impl Label {
         Self(data)
     }
 
-    pub fn as_str(&self) -> &str {
-        self.0.as_str()
+    pub fn as_bytes(&self) -> &[u8] {
+        self.0.as_slice()
     }
 }
 
 impl fmt::Display for Label {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.as_str())
+        write!(f, "{}", String::from_utf8_lossy(&self.0))
     }
 }
 
 impl fmt::Debug for Label {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "\"{}\"", self.as_str())
+        write!(f, "\"{}\"", self)
     }
 }
 
