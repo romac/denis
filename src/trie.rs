@@ -1,17 +1,17 @@
 use core::fmt;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Key {
-    Label(String),
     Wildcard,
+    Label(String),
 }
 
 impl fmt::Display for Key {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Label(label) => write!(f, "{label}"),
             Self::Wildcard => write!(f, "*"),
+            Self::Label(label) => write!(f, "{label}"),
         }
     }
 }
@@ -35,7 +35,7 @@ impl<Value: fmt::Debug> fmt::Debug for DnsTrie<Value> {
 
 #[derive(Clone)]
 pub struct Node<Value> {
-    children: HashMap<Key, Node<Value>>,
+    children: BTreeMap<Key, Node<Value>>,
     value: Option<Value>,
 }
 
@@ -71,7 +71,7 @@ impl<Value: fmt::Debug> fmt::Debug for Node<Value> {
 impl<Value> Default for Node<Value> {
     fn default() -> Self {
         Self {
-            children: HashMap::new(),
+            children: BTreeMap::new(),
             value: None,
         }
     }
@@ -110,7 +110,7 @@ impl<Value> Default for DnsTrie<Value> {
     fn default() -> Self {
         Self {
             root: Node {
-                children: HashMap::new(),
+                children: BTreeMap::new(),
                 value: None,
             },
         }
@@ -120,15 +120,6 @@ impl<Value> Default for DnsTrie<Value> {
 impl<Value> DnsTrie<Value> {
     pub fn new() -> Self {
         Self::default()
-    }
-
-    pub fn leaf(value: Value) -> Self {
-        Self {
-            root: Node {
-                children: HashMap::new(),
-                value: Some(value),
-            },
-        }
     }
 
     pub fn insert(&mut self, keys: &[Key], val: Value) {
