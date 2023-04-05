@@ -26,7 +26,7 @@ impl Db {
     }
 
     pub fn insert(&mut self, name: &Name, record: Record) {
-        let key = &name
+        let key = name
             .labels()
             .iter()
             .map(|label| {
@@ -36,14 +36,13 @@ impl Db {
                     Key::Exact(label.clone())
                 }
             })
-            .rev()
-            .collect::<Vec<_>>();
+            .rev();
 
         self.trie.insert(key, record);
     }
 
     pub fn lookup(&self, name: &Name, qtype: QType) -> Option<&Record> {
-        let key = &name
+        let key = name
             .labels()
             .iter()
             .map(|label| Key::Exact(label.clone()))
@@ -51,7 +50,7 @@ impl Db {
             .collect::<Vec<_>>();
 
         self.trie
-            .lookup(key)
+            .lookup(&key)
             .filter(|record| qtype == QType::ANY || record.qtype() == qtype)
     }
 }

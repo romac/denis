@@ -61,17 +61,15 @@ impl<K: fmt::Display, V: fmt::Display> fmt::Display for Node<K, V> {
 }
 
 impl<K, V> Node<K, V> {
-    pub fn insert(&mut self, keys: &[Key<K>], val: V)
+    pub fn insert(&mut self, keys: impl IntoIterator<Item = Key<K>>, val: V)
     where
-        K: Clone + Ord,
+        K: Ord,
     {
-        if let Some((head, tail)) = keys.split_first() {
-            let node = self
-                .children
-                .entry(head.clone())
-                .or_insert_with(Node::default);
+        let mut iter = keys.into_iter();
 
-            node.insert(tail, val);
+        if let Some(head) = iter.next() {
+            let node = self.children.entry(head).or_insert_with(Node::default);
+            node.insert(iter, val);
         } else {
             self.value = Some(val);
         }
@@ -79,7 +77,7 @@ impl<K, V> Node<K, V> {
 
     pub fn lookup(&self, keys: &[Key<K>]) -> Option<&V>
     where
-        K: Clone + Ord,
+        K: Ord,
     {
         if let Some((head, tail)) = keys.split_first() {
             if let Some(child) = self.children.get(head) {
@@ -119,7 +117,7 @@ impl<K, V> Trie<K, V> {
         Self::default()
     }
 
-    pub fn insert(&mut self, keys: &[Key<K>], val: V)
+    pub fn insert(&mut self, keys: impl IntoIterator<Item = Key<K>>, val: V)
     where
         K: Clone + Ord,
     {
@@ -145,11 +143,11 @@ mod tests {
 
         let foo = Key::Exact("foo");
         let bar = Key::Exact("bar");
-        let key = &[foo, bar];
+        let key = [foo, bar];
 
-        trie.insert(key, 1);
+        trie.insert(key.clone(), 1);
 
-        assert_eq!(trie.lookup(key), Some(&1));
+        assert_eq!(trie.lookup(&key), Some(&1));
     }
 
     #[test]
@@ -159,8 +157,8 @@ mod tests {
         let foo = Key::Exact("foo");
         let bar = Key::Exact("bar");
 
-        trie.insert(&[foo.clone()], 1);
-        trie.insert(&[foo.clone(), Key::Wildcard], 2);
+        trie.insert([foo.clone()], 1);
+        trie.insert([foo.clone(), Key::Wildcard], 2);
 
         assert_eq!(trie.lookup(&[foo.clone()]), Some(&1));
         assert_eq!(trie.lookup(&[foo.clone(), bar.clone()]), Some(&2));
@@ -172,11 +170,11 @@ mod tests {
 
         let foo = Key::Exact("foo");
         let bar = Key::Exact("bar");
-        let key = &[foo.clone(), bar.clone()];
+        let key = [foo.clone(), bar.clone()];
 
-        trie.insert(key, 1);
+        trie.insert(key.clone(), 1);
 
         assert_eq!(trie.lookup(&[foo.clone()]), None);
-        assert_eq!(trie.lookup(key), Some(&1));
+        assert_eq!(trie.lookup(&key), Some(&1));
     }
 }
