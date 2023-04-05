@@ -195,7 +195,7 @@ fn answer_question(db: &Db, question: &Question) -> Result<Option<ResourceRecord
     let elapsed = now.elapsed().as_millis();
 
     info!(
-        "==> {:<50}    {}          {}",
+        "==> {:<50}    {:#}          {}",
         question.qname.blue().bold().to_string(),
         record,
         format!("{elapsed}ms").dimmed()

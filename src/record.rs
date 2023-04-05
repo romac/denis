@@ -38,21 +38,41 @@ impl Record {
     }
 }
 
+fn fmt_normal(r: &Record, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match r {
+        Record::A { address } => write!(
+            f,
+            "A {}.{}.{}.{}",
+            address[0], address[1], address[2], address[3]
+        ),
+        Record::CNAME { name } => write!(f, "CNAME {}", name),
+        Record::TXT { text } => write!(f, "TXT {}", text),
+    }
+}
+
+fn fmt_pretty(r: &Record, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match r {
+        Record::A { address } => write!(
+            f,
+            "{:<8} {}",
+            "A".green().bold(),
+            format!(
+                "{}.{}.{}.{}",
+                address[0], address[1], address[2], address[3]
+            )
+            .yellow()
+        ),
+        Record::CNAME { name } => write!(f, "{:<8} {}", "CNAME".green().bold(), name),
+        Record::TXT { text } => write!(f, "{:<8} {}", "TXT".green().bold(), text.italic()),
+    }
+}
+
 impl fmt::Display for Record {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Record::A { address } => write!(
-                f,
-                "{:<8} {}",
-                "A".green().bold(),
-                format!(
-                    "{}.{}.{}.{}",
-                    address[0], address[1], address[2], address[3]
-                )
-                .yellow()
-            ),
-            Record::CNAME { name } => write!(f, "{:<8} {}", "CNAME".green().bold(), name),
-            Record::TXT { text } => write!(f, "{:<8} {}", "TXT".green().bold(), text.italic()),
+        if f.alternate() {
+            fmt_pretty(self, f)
+        } else {
+            fmt_normal(self, f)
         }
     }
 }
