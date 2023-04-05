@@ -258,6 +258,7 @@ dependencies = [
 name = "denis"
 version = "0.1.0"
 dependencies = [
+ "bytes",
  "clap",
  "color-eyre",
  "deku",

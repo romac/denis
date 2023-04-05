@@ -3,6 +3,7 @@
 use core::fmt;
 use std::str::FromStr;
 
+use bytes::Bytes;
 use color_eyre::{eyre::eyre, Report};
 use deku::{
     bitvec::{BitSlice, BitVec, Msb0},
@@ -266,7 +267,7 @@ impl DekuWrite for Name {
 }
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Label(Vec<u8>);
+pub struct Label(Bytes);
 
 impl Label {
     pub fn new(data: Vec<u8>) -> Self {
@@ -274,11 +275,11 @@ impl Label {
             panic!("Label too long");
         }
 
-        Self(data)
+        Self(Bytes::from(data))
     }
 
     pub fn as_bytes(&self) -> &[u8] {
-        self.0.as_slice()
+        self.0.as_ref()
     }
 }
 
