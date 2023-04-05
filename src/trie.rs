@@ -1,48 +1,38 @@
 use core::fmt;
 use std::collections::BTreeMap;
 
-use crate::data::Label;
-
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Key {
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Key<K> {
     Wildcard,
-    Label(Label),
+    Exact(K),
 }
 
-impl fmt::Display for Key {
+impl<K: fmt::Display> fmt::Display for Key<K> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Wildcard => write!(f, "*"),
-            Self::Label(label) => write!(f, "{label}"),
+            Self::Exact(key) => write!(f, "{key}"),
         }
     }
 }
 
-impl fmt::Debug for Key {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(self, f)
+#[derive(Clone, Debug)]
+pub struct Node<K, V> {
+    children: BTreeMap<Key<K>, Node<K, V>>,
+    value: Option<V>,
+}
+
+impl<K, V> Default for Node<K, V> {
+    fn default() -> Self {
+        Self {
+            children: BTreeMap::new(),
+            value: None,
+        }
     }
 }
 
-#[derive(Clone)]
-pub struct DnsTrie<Value> {
-    root: Node<Value>,
-}
-
-impl<Value: fmt::Debug> fmt::Debug for DnsTrie<Value> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Debug::fmt(&self.root, f)
-    }
-}
-
-#[derive(Clone)]
-pub struct Node<Value> {
-    children: BTreeMap<Key, Node<Value>>,
-    value: Option<Value>,
-}
-
-fn pretty<Value: fmt::Debug>(
-    node: &Node<Value>,
+fn pretty<K: fmt::Display, V: fmt::Display>(
+    node: &Node<K, V>,
     indent: usize,
     f: &mut fmt::Formatter,
 ) -> fmt::Result {
@@ -53,34 +43,28 @@ fn pretty<Value: fmt::Debug>(
     }
 
     for (key, child) in node.children.iter() {
-        write!(f, "\n{:indent$}{spacer} {key:?}", "")?;
+        write!(f, "\n{:indent$}{spacer} {key}", "")?;
         pretty(child, indent + 4, f)?;
     }
 
     if let Some(value) = &node.value {
-        write!(f, "\n{:indent$}{spacer} {value:?}", "")?;
+        write!(f, "\n{:indent$}{spacer} {value}", "")?;
     }
 
     Ok(())
 }
 
-impl<Value: fmt::Debug> fmt::Debug for Node<Value> {
+impl<K: fmt::Display, V: fmt::Display> fmt::Display for Node<K, V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         pretty(self, 0, f)
     }
 }
 
-impl<Value> Default for Node<Value> {
-    fn default() -> Self {
-        Self {
-            children: BTreeMap::new(),
-            value: None,
-        }
-    }
-}
-
-impl<Value> Node<Value> {
-    pub fn insert(&mut self, keys: &[Key], val: Value) {
+impl<K, V> Node<K, V> {
+    pub fn insert(&mut self, keys: &[Key<K>], val: V)
+    where
+        K: Clone + Ord,
+    {
         if let Some((head, tail)) = keys.split_first() {
             let node = self
                 .children
@@ -93,7 +77,10 @@ impl<Value> Node<Value> {
         }
     }
 
-    pub fn lookup(&self, keys: &[Key]) -> Option<&Value> {
+    pub fn lookup(&self, keys: &[Key<K>]) -> Option<&V>
+    where
+        K: Clone + Ord,
+    {
         if let Some((head, tail)) = keys.split_first() {
             if let Some(child) = self.children.get(head) {
                 child.lookup(tail)
@@ -108,27 +95,41 @@ impl<Value> Node<Value> {
     }
 }
 
-impl<Value> Default for DnsTrie<Value> {
+#[derive(Clone, Debug)]
+pub struct Trie<K, V> {
+    root: Node<K, V>,
+}
+
+impl<K, V> Default for Trie<K, V> {
     fn default() -> Self {
         Self {
-            root: Node {
-                children: BTreeMap::new(),
-                value: None,
-            },
+            root: Node::default(),
         }
     }
 }
 
-impl<Value> DnsTrie<Value> {
+impl<K: fmt::Display, V: fmt::Display> fmt::Display for Trie<K, V> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.root, f)
+    }
+}
+
+impl<K, V> Trie<K, V> {
     pub fn new() -> Self {
         Self::default()
     }
 
-    pub fn insert(&mut self, keys: &[Key], val: Value) {
+    pub fn insert(&mut self, keys: &[Key<K>], val: V)
+    where
+        K: Clone + Ord,
+    {
         self.root.insert(keys, val)
     }
 
-    pub fn lookup(&self, keys: &[Key]) -> Option<&Value> {
+    pub fn lookup(&self, keys: &[Key<K>]) -> Option<&V>
+    where
+        K: Clone + Ord,
+    {
         self.root.lookup(keys)
     }
 }
@@ -140,10 +141,10 @@ mod tests {
 
     #[test]
     fn test_lookup_normal() {
-        let mut trie = DnsTrie::new();
+        let mut trie = Trie::new();
 
-        let foo = Key::Label(Label::new(b"foo".to_vec()));
-        let bar = Key::Label(Label::new(b"bar".to_vec()));
+        let foo = Key::Exact("foo");
+        let bar = Key::Exact("bar");
         let key = &[foo, bar];
 
         trie.insert(key, 1);
@@ -153,10 +154,10 @@ mod tests {
 
     #[test]
     fn test_lookup_wildcard() {
-        let mut trie = DnsTrie::new();
+        let mut trie = Trie::new();
 
-        let foo = Key::Label(Label::new(b"foo".to_vec()));
-        let bar = Key::Label(Label::new(b"bar".to_vec()));
+        let foo = Key::Exact("foo");
+        let bar = Key::Exact("bar");
 
         trie.insert(&[foo.clone()], 1);
         trie.insert(&[foo.clone(), Key::Wildcard], 2);
@@ -167,10 +168,10 @@ mod tests {
 
     #[test]
     fn test_lookup_none() {
-        let mut trie = DnsTrie::new();
+        let mut trie = Trie::new();
 
-        let foo = Key::Label(Label::new(b"foo".to_vec()));
-        let bar = Key::Label(Label::new(b"bar".to_vec()));
+        let foo = Key::Exact("foo");
+        let bar = Key::Exact("bar");
         let key = &[foo.clone(), bar.clone()];
 
         trie.insert(key, 1);

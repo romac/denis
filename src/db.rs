@@ -4,19 +4,19 @@ use std::{path::Path, str::FromStr};
 use color_eyre::{eyre::eyre, Report};
 
 use crate::{
-    data::{Name, QType},
+    data::{Label, Name, QType},
     record::Record,
-    trie::{DnsTrie, Key},
+    trie::{Key, Trie},
 };
 
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Db {
-    trie: DnsTrie<Record>,
+    trie: Trie<Label, Record>,
 }
 
-impl fmt::Debug for Db {
+impl fmt::Display for Db {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Debug::fmt(&self.trie, f)
+        fmt::Display::fmt(&self.trie, f)
     }
 }
 
@@ -33,7 +33,7 @@ impl Db {
                 if label.as_bytes() == b"*" {
                     Key::Wildcard
                 } else {
-                    Key::Label(label.clone())
+                    Key::Exact(label.clone())
                 }
             })
             .rev()
@@ -46,7 +46,7 @@ impl Db {
         let key = &name
             .labels()
             .iter()
-            .map(|label| Key::Label(label.clone()))
+            .map(|label| Key::Exact(label.clone()))
             .rev()
             .collect::<Vec<_>>();
 
@@ -197,7 +197,7 @@ mod tests {
             "#;
 
         let db = from_reader(Cursor::new(content)).unwrap();
-        dbg!(&db);
+        println!("{db}");
 
         assert_eq!(
             db.lookup(&Name::new("example.com".to_string()), QType::CNAME),
